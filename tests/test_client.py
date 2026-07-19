@@ -38,6 +38,10 @@ def queued_bucket(aw_client, bucket):
 def test_get_info(aw_client):
     info = aw_client.get_info()
     assert info["testing"]
+    assert "query.categorize_v2.v1" in info["capabilities"]
+    assert "query.categorize_v2_explain.v1" in info["capabilities"]
+    assert "query.active_periods_v2.v1" in info["capabilities"]
+    assert "query.map_event_fields.v1" in info["capabilities"]
 
 
 def test_export(aw_client):

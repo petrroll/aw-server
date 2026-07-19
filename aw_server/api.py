@@ -2,6 +2,7 @@ import functools
 import json
 import logging
 from datetime import datetime
+from inspect import signature
 from pathlib import Path
 from socket import gethostname
 from typing import (
@@ -25,6 +26,25 @@ from .exceptions import NotFound
 from .settings import Settings
 
 logger = logging.getLogger(__name__)
+
+
+def get_capabilities() -> List[str]:
+    capabilities = []
+    if "categorize_v2" in query2.functions:
+        capabilities.append("query.categorize_v2.v1")
+    if "categorize_v2_explain" in query2.functions:
+        capabilities.append("query.categorize_v2_explain.v1")
+    if "active_periods_v2" in query2.functions:
+        capabilities.append("query.active_periods_v2.v1")
+    merge_fields = query2.functions.get("merge_subwatcher_fields")
+    if merge_fields and "source_id" in signature(merge_fields).parameters:
+        capabilities.append("query.merge_subwatcher_fields.source_namespace.v1")
+    if "map_event_fields" in query2.functions:
+        capabilities.append("query.map_event_fields.v1")
+    optional_bucket = query2.functions.get("query_bucket_optional")
+    if optional_bucket and "expected_hostname" in signature(optional_bucket).parameters:
+        capabilities.append("query.query_bucket_optional.expected_hostname.v1")
+    return capabilities
 
 
 def get_device_id() -> str:
@@ -63,6 +83,7 @@ class ServerAPI:
             "version": __version__,
             "testing": self.testing,
             "device_id": get_device_id(),
+            "capabilities": get_capabilities(),
         }
         return payload
 

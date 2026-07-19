@@ -24,6 +24,14 @@ def test_info(flask_client):
     r = flask_client.get("/api/0/info")
     assert r.status_code == 200
     assert r.json["testing"]
+    assert "query.categorize_v2.v1" in r.json["capabilities"]
+    assert "query.categorize_v2_explain.v1" in r.json["capabilities"]
+    assert "query.active_periods_v2.v1" in r.json["capabilities"]
+    assert "query.map_event_fields.v1" in r.json["capabilities"]
+    assert (
+        "query.merge_subwatcher_fields.source_namespace.v1"
+        in r.json["capabilities"]
+    )
 
 
 def test_buckets(flask_client, bucket, benchmark):
