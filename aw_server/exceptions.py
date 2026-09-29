@@ -17,3 +17,9 @@ class Unauthorized(werkzeug.exceptions.Unauthorized):
     def __init__(self, type: str, message: str) -> None:
         super().__init__(message)
         self.type = type
+
+
+class Conflict(werkzeug.exceptions.Conflict):
+    def __init__(self, type: str, message: str) -> None:
+        super().__init__(message)
+        self.type = type

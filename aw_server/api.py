@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_capabilities() -> List[str]:
-    capabilities = []
+    capabilities = ["settings.rules_v2.v1"]
     if "categorize_v2" in query2.functions:
         capabilities.append("query.categorize_v2.v1")
     if "categorize_v2_explain" in query2.functions:
@@ -44,6 +44,12 @@ def get_capabilities() -> List[str]:
     optional_bucket = query2.functions.get("query_bucket_optional")
     if optional_bucket and "expected_hostname" in signature(optional_bucket).parameters:
         capabilities.append("query.query_bucket_optional.expected_hostname.v1")
+    if "query_bucket_optional_raw" in query2.functions:
+        capabilities.append("query.query_bucket_optional_raw.v1")
+    if "query_period" in query2.functions:
+        capabilities.append("query.query_period.v1")
+    if "flood_v2" in query2.functions:
+        capabilities.append("query.flood_v2.v1")
     return capabilities
 
 
@@ -387,11 +393,14 @@ class ServerAPI:
                 payload.append(json.loads(line))
         return payload, 200
 
-    def get_setting(self, key):
+    def get_setting(self, key, default=None):
         """Get a setting"""
-        return self.settings.get(key, None)
+        return self.settings.get(key, default)
 
-    def set_setting(self, key, value):
-        """Set a setting"""
-        self.settings[key] = value
-        return value
+    def set_setting(self, key, value, expected_revision=None):
+        """Set a setting, translating legacy rule writes when canonical rules exist."""
+        return self.settings.set(key, value, expected_revision=expected_revision)
+
+    def replace_rules_v2(self, value):
+        """Validate and atomically CAS-replace the canonical rules document."""
+        return self.settings.replace_rules(value)

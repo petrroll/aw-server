@@ -19,7 +19,13 @@ from flask_restx import Api, Resource, fields
 
 from . import logger
 from .api import ServerAPI
-from .exceptions import BadRequest, Unauthorized
+from .exceptions import BadRequest, Conflict, Unauthorized
+from .rules_settings import (
+    MAX_SAFE_REVISION,
+    RULES_KEY,
+    RulesConflictError,
+    RulesValidationError,
+)
 
 
 def host_header_check(f):
@@ -398,15 +404,65 @@ class LogResource(Resource):
 # SETTINGS
 
 
+_MISSING_SETTING = object()
+
+
+def _settings_expected_revision():
+    raw = request.args.get("revision")
+    if_match = request.headers.get("If-Match")
+    if raw is not None and if_match is not None:
+        raise BadRequest("InvalidRevision", "Supply revision or If-Match, not both")
+    raw = if_match if if_match is not None else raw
+    if raw is None:
+        return None
+    value = raw.strip()
+    if value.startswith("W/"):
+        value = value[2:].strip()
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        value = value[1:-1]
+    try:
+        revision = int(value)
+    except (TypeError, ValueError):
+        raise BadRequest("InvalidRevision", "Revision must be a non-negative integer")
+    if revision < 0 or revision > MAX_SAFE_REVISION:
+        raise BadRequest(
+            "InvalidRevision",
+            f"Revision must be an integer between 0 and {MAX_SAFE_REVISION}",
+        )
+    return revision
+
+
 @api.route("/0/settings", defaults={"key": ""})
 @api.route("/0/settings/<string:key>")
 class SettingsResource(Resource):
     def get(self, key: str):
-        data = current_app.api.get_setting(key)
+        default = _MISSING_SETTING if key == RULES_KEY else None
+        data = current_app.api.get_setting(key, default)
+        if data is _MISSING_SETTING:
+            return {"message": "No canonical rules_v2 document exists"}, 404
         return jsonify(data)
 
     def post(self, key: str):
         if not key:
             raise BadRequest("MissingParameter", "Missing required parameter key")
-        data = current_app.api.set_setting(key, request.get_json())
-        return data
+        value = request.get_json()
+        expected_revision = _settings_expected_revision()
+        try:
+            if key == RULES_KEY:
+                if not isinstance(value, dict):
+                    raise RulesValidationError("rules_v2 must be an object")
+                body_revision = value.get("revision")
+                if expected_revision is not None and expected_revision != body_revision:
+                    raise RulesValidationError(
+                        "If-Match/revision does not match the expected revision in the request body"
+                    )
+                data = current_app.api.replace_rules_v2(value)
+                return data, 200
+            data = current_app.api.set_setting(
+                key, value, expected_revision=expected_revision
+            )
+            return data
+        except RulesConflictError as error:
+            raise Conflict("RulesRevisionConflict", str(error))
+        except RulesValidationError as error:
+            raise BadRequest("InvalidRulesSettings", str(error))

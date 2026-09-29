@@ -1,3 +1,4 @@
+import json
 import random
 from datetime import datetime, timedelta
 
@@ -24,6 +25,7 @@ def test_info(flask_client):
     r = flask_client.get("/api/0/info")
     assert r.status_code == 200
     assert r.json["testing"]
+    assert "settings.rules_v2.v1" in r.json["capabilities"]
     assert "query.categorize_v2.v1" in r.json["capabilities"]
     assert "query.categorize_v2_explain.v1" in r.json["capabilities"]
     assert "query.active_periods_v2.v1" in r.json["capabilities"]
@@ -32,6 +34,9 @@ def test_info(flask_client):
         "query.merge_subwatcher_fields.source_namespace.v1"
         in r.json["capabilities"]
     )
+    assert "query.query_bucket_optional_raw.v1" in r.json["capabilities"]
+    assert "query.query_period.v1" in r.json["capabilities"]
+    assert "query.flood_v2.v1" in r.json["capabilities"]
 
 
 def test_buckets(flask_client, bucket, benchmark):
@@ -124,6 +129,27 @@ def test_query_timeperiod_missing_slash(flask_client):
         json={"query": ["RETURN = 1;"], "timeperiods": ["2024-01-01T00:00:00+00:00"]},
     )
     assert r.status_code == 400
+
+
+@pytest.mark.parametrize("function", ["categorize", "tag"])
+@pytest.mark.parametrize("rule", [42, None, [], True, "x"])
+def test_query_non_object_legacy_rule_returns_client_error(
+    flask_client, function, rule
+):
+    query = (
+        "events = []; RETURN = "
+        f"{function}(events, {json.dumps([[['Category'], rule]])});"
+    )
+    response = flask_client.post(
+        "/api/0/query/",
+        json={
+            "query": [query],
+            "timeperiods": [
+                "2024-01-01T00:00:00+00:00/2024-01-02T00:00:00+00:00"
+            ],
+        },
+    )
+    assert response.status_code == 400
 
 
 def test_query_valid_timeperiod(flask_client):
